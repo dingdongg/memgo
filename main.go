@@ -27,22 +27,38 @@ func NewMemory() *Memory {
 func (m *Memory) Read(addr uint, n int) []byte {
 	offsetMask := uint((1 << PAGE_OFFSET_SIZE) - 1)
 	offset := addr & uint(offsetMask)
-	pageNum := m.pageNum(addr)
+	pageNum := m.getVPN(addr)
 
 	// page num is used to index into the page table.
 	// afterrwards, combine with offset to get physical address
 	ppn := m.getPPN(pageNum)
 	physAddr := ppn | offset
-	return m.physical[physAddr : physAddr+4]
+	return m.physical[physAddr : physAddr+4] 
 }
 
-func (m *Memory) pageNum(addr uint) uint {
+func (m *Memory) getVPN(addr uint) uint {
 	offsetMask := uint((1 << PAGE_OFFSET_SIZE) - 1)
 	bitmask := ^offsetMask
 	return (addr & bitmask) >> PAGE_OFFSET_SIZE
 }
 
 func (m *Memory) getPPN(pageNum uint) uint {
+	ppn, exists := (*m.pageTable)[pageNum]
+
+	fmt.Println(ppn)
+	if !exists {
+		// TODO: implement page fault + fetching from disk
+		fmt.Println("pagefault")
+	}
+
+	/*
+	(more research required on this)
+	so  far, it seems like page faults are implemented via CPU interrupts in the hardware.
+		- this means there is no "event queue" or "polling" involved
+	I can't think of a way to replicate this hardware implementation,
+	so for now I think I will spawn a goroutine to concurrently listen for & handle
+	page fault events (ie. an event queue lol)
+	*/
 	return 0
 }
 
