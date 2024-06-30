@@ -2,14 +2,12 @@ package main
 
 import "fmt"
 
-const VIRTUAL_MEM_SIZE = 1 << 40
-const PHYSICAL_MEM_SIZE = 1 << 32
+const VIRTUAL_MEM_ADDR_SPACE = 32
+const PHYSICAL_MEM_ADDR_SPACE = 24
 const DISK_SIZE = 1 << 50
+const PAGE_OFFSET_SIZE = 14 // each page = 16KB in size
 
-type VirtAddr uint64
-type PhysAddr uint64
-
-type PageTable map[VirtAddr]PhysAddr
+type PageTable map[uint]uint
 
 type Memory struct {
 	physical []byte			// equivalent to RAM. RAM serves as a fast cache for the 100,000X slower disk storage
@@ -20,17 +18,35 @@ type Memory struct {
 func NewMemory() *Memory {
 	pageTable := make(PageTable)
 	return &Memory{
-		physical: make([]byte, PHYSICAL_MEM_SIZE),
+		physical: make([]byte, 1 << PHYSICAL_MEM_ADDR_SPACE),
 		pageTable: &pageTable,
 		secondary: make([]byte, DISK_SIZE),
 	}
 }
 
-func (m *Memory) Read(addr VirtAddr, n int) []byte {
-	return []byte{}
+func (m *Memory) Read(addr uint, n int) []byte {
+	offsetMask := uint((1 << PAGE_OFFSET_SIZE) - 1)
+	offset := addr & uint(offsetMask)
+	pageNum := m.pageNum(addr)
+
+	// page num is used to index into the page table.
+	// afterrwards, combine with offset to get physical address
+	ppn := m.getPPN(pageNum)
+	physAddr := ppn | offset
+	return m.physical[physAddr : physAddr+4]
 }
 
-func (m *Memory) Write(addr VirtAddr, data []byte) error {
+func (m *Memory) pageNum(addr uint) uint {
+	offsetMask := uint((1 << PAGE_OFFSET_SIZE) - 1)
+	bitmask := ^offsetMask
+	return (addr & bitmask) >> PAGE_OFFSET_SIZE
+}
+
+func (m *Memory) getPPN(pageNum uint) uint {
+	return 0
+}
+
+func (m *Memory) Write(addr uint, data []byte) error {
 	return nil
 }
 
