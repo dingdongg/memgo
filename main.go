@@ -4,7 +4,7 @@ import "fmt"
 
 const VIRTUAL_MEM_SIZE = 1 << 40
 const PHYSICAL_MEM_SIZE = 1 << 32
-const DISK_SIZE = 1 << 62
+const DISK_SIZE = 1 << 50
 
 type VirtAddr uint64
 type PhysAddr uint64
@@ -12,7 +12,7 @@ type PhysAddr uint64
 type PageTable map[VirtAddr]PhysAddr
 
 type Memory struct {
-	physical []byte			// equivalent to RAM
+	physical []byte			// equivalent to RAM. RAM serves as a fast cache for the 100,000X slower disk storage
 	pageTable *PageTable	// page table
 	secondary []byte 		// not sure what the appropriate type would be, just do this for now
 }
@@ -26,8 +26,22 @@ func NewMemory() *Memory {
 	}
 }
 
+func (m *Memory) Read(addr VirtAddr, n int) []byte {
+	return []byte{}
+}
+
+func (m *Memory) Write(addr VirtAddr, data []byte) error {
+	return nil
+}
+
+// main function can simulate the memory access requests from the CPU
 func main() {
 	fmt.Println("HELLO WORLD")
+
+	mem := NewMemory() // upon process startup, memory is allocated to the process
+	fmt.Printf("%+v\n", mem)
+
+	// bunch of read/write requests to memory
 }
 
 
