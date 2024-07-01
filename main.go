@@ -17,6 +17,7 @@ type PageTable map[uint]uint
 
 type PageFault struct {
 	callback any // will be some sort of callback function to execute after CPU exits kernel mode
+	virtualPageNum uint
 }
 
 type Memory struct {
@@ -24,6 +25,19 @@ type Memory struct {
 	pageTable *PageTable	// page table
 	secondary []byte 		// not sure what the appropriate type would be, just do this for now
 	pageFaultQueue chan *PageFault
+	pageFaultResults chan uint
+}
+
+func (m *Memory) String() string {
+	return fmt.Sprintf(`
+		Memory {
+			&physical:  %p (len=%d)
+			&pageTable: %p
+			&secondary: %p (len=%d)
+			pageFaultQueue: %p
+		}
+	`, m.physical, len(m.physical), m.pageTable, 
+	m.secondary,len(m.secondary), &(m.pageFaultQueue))
 }
 
 func NewMemory() *Memory {
@@ -33,6 +47,7 @@ func NewMemory() *Memory {
 		pageTable: &pageTable,
 		secondary: make([]byte, DISK_SIZE),
 		pageFaultQueue: make(chan *PageFault),
+		pageFaultResults: make(chan uint),
 	}
 }
 
@@ -43,7 +58,12 @@ func (m *Memory) Read(addr uint, n int) []byte {
 
 	// page num is used to index into the page table.
 	// afterrwards, combine with offset to get physical address
-	ppn := m.getPPN(pageNum)
+	ppn, err := m.getPPN(pageNum)
+	if err != nil {
+		// pagefault occurred, 
+		// have another channel from which we will eventually receive the correct page number
+		ppn = <-m.pageFaultResults
+	}
 	physAddr := ppn | offset
 	return m.physical[physAddr : physAddr+4] 
 }
@@ -54,13 +74,15 @@ func (m *Memory) getVPN(addr uint) uint {
 	return (addr & bitmask) >> PAGE_OFFSET_SIZE
 }
 
-func (m *Memory) getPPN(pageNum uint) uint {
+func (m *Memory) getPPN(pageNum uint) (uint, error) {
 	ppn, exists := (*m.pageTable)[pageNum]
 
 	fmt.Println(ppn)
 	if !exists {
 		// TODO: implement page fault + fetching from disk
-		fmt.Println("pagefault")
+		pageFault := PageFault{virtualPageNum: pageNum}
+		m.pageFaultQueue <- &pageFault
+		return 0, fmt.Errorf("page fault")
 	}
 
 	/*
@@ -71,7 +93,7 @@ func (m *Memory) getPPN(pageNum uint) uint {
 	so for now I think I will spawn a goroutine to concurrently listen for & handle
 	page fault events (ie. an event queue lol)
 	*/
-	return 0
+	return ppn, nil
 }
 
 func (m *Memory) Write(addr uint, data []byte) error {
@@ -80,10 +102,22 @@ func (m *Memory) Write(addr uint, data []byte) error {
 
 // workaround for the CPU interrupt mechanism
 // TODO: implement using m.pageFaultQueue
-func (m *Memory) listenForPageFaults() {
+func (m *Memory) listenForPageFaults(wg *sync.WaitGroup) {
+	defer func() {
+		close(m.pageFaultQueue)
+		wg.Done()
+	}()
+
 	for {
-		time.Sleep(time.Second)
-		fmt.Println("listenin...")
+		select {
+		case pf := <-m.pageFaultQueue:
+			fmt.Printf("received page fault! %+v\n", pf)
+			// TODO: page fault resolution here
+			m.pageFaultResults <- 123
+		default: 
+			fmt.Println("listsening...")
+			time.Sleep(time.Second)
+		}
 	}
 }
 
@@ -92,13 +126,20 @@ func main() {
 	fmt.Println("HELLO WORLD")
 
 	mem := NewMemory() // upon process startup, memory is allocated to the process
-	// fmt.Printf("%+v\n", mem)
+	defer close(mem.pageFaultResults)
+	fmt.Println(mem)
 
 	var wg sync.WaitGroup
 
 	wg.Add(1)
-	go mem.listenForPageFaults()
+	go mem.listenForPageFaults(&wg)
 	// bunch of read/write requests to memory
+
+	read1 := mem.Read(0x12341000, 4)
+	fmt.Println(read1)
+	read2 := mem.Read(0x12341000, 4)
+	fmt.Println(read2)
+
 	wg.Wait()
 }
 
