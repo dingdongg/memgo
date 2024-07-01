@@ -1,18 +1,29 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+	"time"
+)
 
 const VIRTUAL_MEM_ADDR_SPACE = 32
 const PHYSICAL_MEM_ADDR_SPACE = 24
-const DISK_SIZE = 1 << 50
+const DISK_SIZE = 1 << 40
 const PAGE_OFFSET_SIZE = 14 // each page = 16KB in size
 
 type PageTable map[uint]uint
+
+// https://ocw.mit.edu/courses/6-004-computation-structures-spring-2017/pages/c16/c16s2/c16s2v2/
+
+type PageFault struct {
+	callback any // will be some sort of callback function to execute after CPU exits kernel mode
+}
 
 type Memory struct {
 	physical []byte			// equivalent to RAM. RAM serves as a fast cache for the 100,000X slower disk storage
 	pageTable *PageTable	// page table
 	secondary []byte 		// not sure what the appropriate type would be, just do this for now
+	pageFaultQueue chan *PageFault
 }
 
 func NewMemory() *Memory {
@@ -21,6 +32,7 @@ func NewMemory() *Memory {
 		physical: make([]byte, 1 << PHYSICAL_MEM_ADDR_SPACE),
 		pageTable: &pageTable,
 		secondary: make([]byte, DISK_SIZE),
+		pageFaultQueue: make(chan *PageFault),
 	}
 }
 
@@ -66,14 +78,28 @@ func (m *Memory) Write(addr uint, data []byte) error {
 	return nil
 }
 
+// workaround for the CPU interrupt mechanism
+// TODO: implement using m.pageFaultQueue
+func (m *Memory) listenForPageFaults() {
+	for {
+		time.Sleep(time.Second)
+		fmt.Println("listenin...")
+	}
+}
+
 // main function can simulate the memory access requests from the CPU
 func main() {
 	fmt.Println("HELLO WORLD")
 
 	mem := NewMemory() // upon process startup, memory is allocated to the process
-	fmt.Printf("%+v\n", mem)
+	// fmt.Printf("%+v\n", mem)
 
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go mem.listenForPageFaults()
 	// bunch of read/write requests to memory
+	wg.Wait()
 }
 
 
