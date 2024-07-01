@@ -26,6 +26,8 @@ type Memory struct {
 	secondary []byte 		// not sure what the appropriate type would be, just do this for now
 	pageFaultQueue chan *PageFault
 	pageFaultResults chan uint
+	pagesAllocated uint
+	MAX_PAGES uint
 }
 
 func (m *Memory) String() string {
@@ -48,6 +50,8 @@ func NewMemory() *Memory {
 		secondary: make([]byte, DISK_SIZE),
 		pageFaultQueue: make(chan *PageFault),
 		pageFaultResults: make(chan uint),
+		pagesAllocated: 0,
+		MAX_PAGES: 1 << (PHYSICAL_MEM_ADDR_SPACE - PAGE_OFFSET_SIZE),
 	}
 }
 
@@ -113,7 +117,17 @@ func (m *Memory) listenForPageFaults(wg *sync.WaitGroup) {
 		case pf := <-m.pageFaultQueue:
 			fmt.Printf("received page fault! %+v\n", pf)
 			// TODO: page fault resolution here
-			m.pageFaultResults <- 123
+
+			if m.pagesAllocated == m.MAX_PAGES {
+				// memory is full, go into disk to fetch memory
+				// TODO: implement eviction algorithm
+				fmt.Println("a page must be swapped out... TODO")
+				m.pageFaultResults <- 123 // stub
+			} else {
+				(*m.pageTable)[pf.virtualPageNum] = m.pagesAllocated * (1 << PAGE_OFFSET_SIZE)
+				m.pageFaultResults <- (*m.pageTable)[pf.virtualPageNum]
+				m.pagesAllocated += 1
+			}
 		default: 
 			fmt.Println("listsening...")
 			time.Sleep(time.Second)
