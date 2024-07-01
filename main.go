@@ -6,20 +6,52 @@ import (
 	"time"
 )
 
+// these parameters can be adjusted,
+// provided the compiler doesn't yell at u lol
 const VIRTUAL_MEM_ADDR_SPACE = 32
 const PHYSICAL_MEM_ADDR_SPACE = 24
 const DISK_SIZE = 1 << 40
 const PAGE_OFFSET_SIZE = 14 // each page = 16KB in size
 
+/* 
+	NOTE: (more research required) 
+
+	Operating systems have resident/dirty big flags, implement this
+	- There are also other flags in some OSs, so I may want to look further into flags
+*/
 type PageTable map[uint]uint
 
 // https://ocw.mit.edu/courses/6-004-computation-structures-spring-2017/pages/c16/c16s2/c16s2v2/
 
+/* 
+	NOTE: 
+	
+	callback isn't needed anymore, since page faults are handled concurrently? 
+
+	also, there seem to be different types of page faults. look into those more.
+*/
 type PageFault struct {
 	callback any // will be some sort of callback function to execute after CPU exits kernel mode
 	virtualPageNum uint
 }
 
+/*
+	Represents the memory management layer.
+
+	- `physical` is the physical memory (ie. RAM)
+
+	- `pageTable` is the page table that maps virtual page numbers to physical page numbers
+
+	- `secondary` is the field to represent secondary storage (ie. disk)
+	
+	- `pageFaultQueue` is the channel to which page faults are sent
+	
+	- `pageFaultResults` is the channel through which page fault results are received
+	
+	- `pagesAllocated` is the current number of pages allocated in `physical`
+	
+	- `MAX_PAGES` is the maximum number of pages that can fit in RAM
+*/
 type Memory struct {
 	physical []byte			// equivalent to RAM. RAM serves as a fast cache for the 100,000X slower disk storage
 	pageTable *PageTable	// page table
@@ -30,6 +62,7 @@ type Memory struct {
 	MAX_PAGES uint
 }
 
+// Used for logging Memory state
 func (m *Memory) String() string {
 	return fmt.Sprintf(`
 		Memory {
@@ -55,6 +88,8 @@ func NewMemory() *Memory {
 	}
 }
 
+// attempts to read from memory.
+// NOTE: if there is a page fault, this function will block until it is resolved
 func (m *Memory) Read(addr uint, n int) []byte {
 	offsetMask := uint((1 << PAGE_OFFSET_SIZE) - 1)
 	offset := addr & uint(offsetMask)
@@ -72,12 +107,16 @@ func (m *Memory) Read(addr uint, n int) []byte {
 	return m.physical[physAddr : physAddr+4] 
 }
 
+// calculates the given virtual address' virtual page number
 func (m *Memory) getVPN(addr uint) uint {
 	offsetMask := uint((1 << PAGE_OFFSET_SIZE) - 1)
 	bitmask := ^offsetMask
 	return (addr & bitmask) >> PAGE_OFFSET_SIZE
 }
 
+// fetches the corresponding physical page number of the given virtual page number.
+//
+// Page faults (if any) are sent to the page fault queue for asynchronous processing
 func (m *Memory) getPPN(pageNum uint) (uint, error) {
 	ppn, exists := (*m.pageTable)[pageNum]
 
@@ -105,7 +144,6 @@ func (m *Memory) Write(addr uint, data []byte) error {
 }
 
 // workaround for the CPU interrupt mechanism
-// TODO: implement using m.pageFaultQueue
 func (m *Memory) listenForPageFaults(wg *sync.WaitGroup) {
 	defer func() {
 		close(m.pageFaultQueue)
